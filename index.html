@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>For Sandoori</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Lato:wght@300;400;700&display=swap');
+      
+      body {
+        font-family: 'Lato', sans-serif;
+        background-color: #fff1f2; /* rose-50 */
+      }
+      
+      h1, h2, h3, .serif {
+        font-family: 'Playfair Display', serif;
+      }
+
+      .fade-in {
+        animation: fadeIn 1s ease-in-out;
+      }
+
+      @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+
+      .heart-float {
+        animation: float 3s ease-in-out infinite;
+      }
+
+      @keyframes float {
+        0% { transform: translateY(0px); }
+        50% { transform: translateY(-10px); }
+        100% { transform: translateY(0px); }
+      }
+      
+      .animate-spin-slow {
+        animation: spin 3s linear infinite;
+      }
+      
+      @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react": "https://esm.sh/react@^19.2.3",
+    "lucide-react": "https://esm.sh/lucide-react@^0.561.0",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "react-dom": "https://esm.sh/react-dom@^19.2.3",
+    "@google/genai": "https://esm.sh/@google/genai@^1.33.0"
+  }
+}
+</script>
+</head>
+  <body>
+    <div id="root"></div>
+    <script type="text/babel" data-type="module">
+      import React, { useState, useEffect, useRef } from 'react';
+      import ReactDOM from 'react-dom/client';
+      import { Heart, Lock, Unlock, Play, Volume2, VolumeX, ArrowRight, Sparkles, Rewind, AlertCircle } from 'lucide-react';
+      import { GoogleGenAI } from "@google/genai";
+
+      // --- SHIM PROCESS.ENV for Browser ---
+      if (typeof process === 'undefined') {
+        window.process = { env: { API_KEY: '' } }; 
+      }
+      // Note: If running locally without a build server, you might need to manually insert your key above
+      // e.g., API_KEY: 'your-key-here'
+
+      // --- TYPES & CONSTANTS ---
+      const AppStep = {
+        INTRO: 'INTRO',
+        APOLOGY_VIDEO: 'APOLOGY_VIDEO',
+        CUTE_VIDEO: 'CUTE_VIDEO',
+        LOVE_LETTER: 'LOVE_LETTER',
+      };
+
+      const APOLOGY_VIDEO_URL = "apology.mp4"; 
+      const CUTE_VIDEO_URL = "surprise.mp4"; 
+      const COUPLE_PHOTO_URL = "IMG_4147.png";
+
+      // --- GEMINI SERVICE ---
+      // Uses the key from the environment shim or injection
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+      const generateLoveNote = async () => {
+        try {
+          const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: `Write a short, incredibly romantic, and sincere apology letter to my girlfriend Sandoori. 
+            Context: I was acting a bit "off" and distant earlier today, and I feel terrible about it. 
+            I want to tell Sandoori that she is my world, my mood was not her fault, and I love her endlessly.
+            Mention her name "Sandoori" affectionately.
+            Keep it under 150 words. Make it sound poetic but real.`,
+          });
+          
+          return response.text || "Sandoori, I love you more than words can say. I'm sorry for earlier.";
+        } catch (error) {
+          console.error("Error generating note:", error);
+          return "My darling Sandoori, I am so sorry for being off earlier. Please forgive me. You mean the world to me, You are the sunshine in my world, the very pulse that beats in my chest, You deserve only tenderness and joy, and the thought of causing you anything less breaks me. You are my everything, Sandoori. I LOVE YOU!";
+        }
+      };
+
+      // --- COMPONENT: FloatingHearts ---
+      const FloatingHearts = () => {
+        return (
+          <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
+            <div className="absolute top-[10%] left-[10%] text-rose-200 text-4xl opacity-50 heart-float" style={{ animationDelay: '0s' }}>♥</div>
+            <div className="absolute top-[20%] right-[15%] text-pink-200 text-2xl opacity-40 heart-float" style={{ animationDelay: '1s' }}>♥</div>
+            <div className="absolute bottom-[15%] left-[20%] text-rose-300 text-5xl opacity-30 heart-float" style={{ animationDelay: '2s' }}>♥</div>
+            <div className="absolute bottom-[30%] right-[10%] text-red-200 text-3xl opacity-40 heart-float" style={{ animationDelay: '0.5s' }}>♥</div>
+          </div>
+        );
+      };
+
+      // --- COMPONENT: App ---
+      const App = () => {
+        const [step, setStep] = useState(AppStep.INTRO);
+        const [videoEnded, setVideoEnded] = useState(false);
+        const [loadingNote, setLoadingNote] = useState(false);
+        const [aiNote, setAiNote] = useState("");
+        const [videoError, setVideoError] = useState(false);
+        
+        // Audio handling - Start muted to allow autoplay on most browsers
+        const [isMuted, setIsMuted] = useState(true);
+        const videoRef = useRef(null);
+
+        // Scroll to top on step change
+        useEffect(() => {
+          window.scrollTo(0, 0);
+          setVideoEnded(false);
+          setVideoError(false);
+          setIsMuted(true); 
+        }, [step]);
+
+        const handleVideoEnd = () => {
+          setVideoEnded(true);
+        };
+
+        const handleVideoError = () => {
+          setVideoError(true);
+          setVideoEnded(true);
+        };
+
+        const handleGenerateNote = async () => {
+          setLoadingNote(true);
+          const note = await generateLoveNote();
+          setAiNote(note);
+          setLoadingNote(false);
+        };
+
+        // --- RENDER FUNCTIONS ---
+
+        const renderIntro = () => (
+          <div className="flex flex-col items-center justify-center min-h-screen p-4 md:p-6 text-center z-10 relative">
+            <div className="bg-white/90 backdrop-blur-md p-6 md:p-10 rounded-3xl shadow-2xl border border-rose-100 max-w-lg w-full fade-in flex flex-col items-center">
+              
+              {/* Photo Section */}
+              <div className="mb-8 relative group w-full max-w-[280px] md:max-w-sm mx-auto transform -rotate-2 hover:rotate-0 transition-transform duration-500 ease-out">
+                <div className="absolute -inset-2 bg-gradient-to-r from-rose-300 to-pink-400 rounded-xl blur-md opacity-60 group-hover:opacity-80 transition duration-500"></div>
+                <div className="relative bg-white p-2 md:p-3 rounded-lg shadow-lg">
+                   <img 
+                     src={COUPLE_PHOTO_URL} 
+                     alt="Me and Sandoori" 
+                     className="w-full h-auto rounded-md object-cover aspect-[3/4]"
+                     onError={(e) => {
+                       // Fallback if image isn't found
+                       e.target.src = "https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?q=80&w=600&auto=format&fit=crop";
+                     }}
+                   />
+                   <div className="pt-3 pb-1">
+                     <p className="font-handwriting text-gray-500 text-sm md:text-base font-medium font-serif italic">Us ❤️</p>
+                   </div>
+                </div>
+              </div>
+
+              <h1 className="text-3xl md:text-5xl font-bold text-gray-800 mb-4 serif leading-tight">
+                For Sandoori
+              </h1>
+              <p className="text-base md:text-lg text-gray-600 mb-8 leading-relaxed px-2">
+                I know I was a bit off earlier, and I hate that it made you feel sad 
+                I wanted to show you how much you truly mean to me.
+              </p>
+              <button
+                onClick={() => setStep(AppStep.APOLOGY_VIDEO)}
+                className="w-full md:w-auto group relative inline-flex items-center justify-center px-8 py-4 text-lg font-medium text-white transition-all duration-200 bg-rose-500 rounded-full hover:bg-rose-600 active:scale-95 shadow-lg hover:shadow-rose-300/50"
+              >
+                <span>Hear Me Out</span>
+                <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
+              </button>
+            </div>
+          </div>
+        );
+
+        const renderVideoStep = (
+          currentStep,
+          videoUrl,
+          title,
+          nextLabel,
+          onNext,
+          isLocked = false
+        ) => {
+          return (
+            <div className="flex flex-col items-center justify-center min-h-screen p-4 z-10 relative">
+              <div className="w-full max-w-4xl bg-white rounded-2xl shadow-2xl overflow-hidden border-4 border-white fade-in">
+                
+                <div className="p-4 md:p-6 bg-rose-50 border-b border-rose-100 flex justify-between items-center">
+                  <h2 className="text-xl md:text-2xl font-bold text-rose-900 serif truncate pr-2">{title}</h2>
+                  <button 
+                    onClick={() => setIsMuted(!isMuted)} 
+                    className="p-2 rounded-full hover:bg-rose-200 transition-colors text-rose-700 flex items-center gap-2 flex-shrink-0"
+                    title={isMuted ? "Unmute" : "Mute"}
+                  >
+                    {isMuted ? (
+                      <React.Fragment>
+                        <VolumeX size={20} />
+                        <span className="text-xs font-medium hidden sm:inline">Unmute</span>
+                      </React.Fragment>
+                    ) : (
+                      <Volume2 size={20} />
+                    )}
+                  </button>
+                </div>
+
+                <div className="relative aspect-video bg-black group">
+                  {!videoError ? (
+                    <React.Fragment>
+                      <video
+                        ref={videoRef}
+                        src={videoUrl}
+                        className="w-full h-full object-cover"
+                        autoPlay
+                        muted={isMuted}
+                        playsInline
+                        onEnded={handleVideoEnd}
+                        onError={handleVideoError}
+                        controls={false}
+                        onClick={() => {
+                          if (videoRef.current?.paused) videoRef.current.play();
+                          else videoRef.current?.pause();
+                        }}
+                      />
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
+                          <div className="bg-black/30 p-4 rounded-full backdrop-blur-sm">
+                            <Play className="text-white fill-white w-8 h-8" />
+                          </div>
+                      </div>
+                    </React.Fragment>
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center text-white bg-gray-900 p-8 text-center">
+                      <AlertCircle className="w-12 h-12 text-rose-400 mb-4" />
+                      <p className="text-lg">Video could not be loaded.</p>
+                      <p className="text-sm text-gray-400 mt-2">
+                        (Note for developer: Please verify the video URL)
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="p-6 md:p-8 bg-white flex flex-col items-center text-center">
+                  {videoEnded ? (
+                    <div className="fade-in space-y-4 w-full">
+                      <p className="text-gray-600 italic mb-2">
+                        {currentStep === AppStep.APOLOGY_VIDEO 
+                          ? "Thank you for listening..." 
+                          : "I hope that made you smile."}
+                      </p>
+                      <button
+                        onClick={onNext}
+                        className="w-full md:w-auto inline-flex justify-center items-center px-8 py-4 bg-rose-600 hover:bg-rose-700 text-white rounded-full font-semibold transition-all shadow-md hover:shadow-lg transform active:scale-95"
+                      >
+                        {isLocked ? <Lock className="mr-2 w-4 h-4" /> : <Unlock className="mr-2 w-4 h-4" />}
+                        {nextLabel}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center space-x-2 text-rose-400 animate-pulse">
+                      <span className="text-sm font-medium uppercase tracking-widest">Watching...</span>
+                    </div>
+                  )}
+                  
+                  {!videoEnded && !videoError && (
+                    <button 
+                      onClick={() => setVideoEnded(true)}
+                      className="mt-6 text-xs text-gray-300 hover:text-gray-500 underline py-2 px-4"
+                    >
+                      (Skip video)
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        };
+
+        const renderLetter = () => (
+          <div className="flex flex-col items-center justify-center min-h-screen p-4 z-10 relative">
+            <div className="w-full max-w-2xl bg-white p-6 md:p-12 rounded-xl shadow-xl relative overflow-hidden fade-in border border-stone-100">
+              <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-rose-300 via-rose-500 to-rose-300"></div>
+              <Sparkles className="absolute top-6 right-6 text-yellow-400 w-6 h-6 animate-spin-slow" />
+              
+              <h2 className="text-2xl md:text-3xl font-bold text-center text-rose-900 mb-8 serif">
+                One Last Thing
+              </h2>
+
+              {!aiNote ? (
+                <div className="text-center">
+                   <p className="text-gray-600 mb-8 text-sm md:text-base">
+                     I wanted to write something perfect for you, Sandoori, but sometimes I struggle to find the right words. 
+                     I asked the stars becuase no words can to help me express exactly how I feel right now.
+                   </p>
+                   <button
+                     onClick={handleGenerateNote}
+                     disabled={loadingNote}
+                     className="w-full md:w-auto bg-gradient-to-r from-rose-500 to-pink-600 text-white px-8 py-4 rounded-full font-bold shadow-lg hover:shadow-xl hover:scale-105 transition-all disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center mx-auto active:scale-95"
+                   >
+                     {loadingNote ? (
+                       <React.Fragment>
+                         <span className="animate-spin mr-2">⏳</span> Writing...
+                       </React.Fragment>
+                     ) : (
+                       <React.Fragment>
+                         <Heart className="mr-2 fill-white w-5 h-5" /> Read My Letter
+                       </React.Fragment>
+                     )}
+                   </button>
+                </div>
+              ) : (
+                <div className="fade-in">
+                  <div className="bg-rose-50 p-6 md:p-8 rounded-lg border border-rose-100 relative mb-6">
+                    <span className="text-4xl text-rose-200 absolute -top-3 -left-1 serif">“</span>
+                    <p className="text-base md:text-xl text-gray-800 leading-relaxed font-light whitespace-pre-line italic">
+                      {aiNote}
+                    </p>
+                    <span className="text-4xl text-rose-200 absolute -bottom-6 -right-1 serif">”</span>
+                  </div>
+                  
+                  <div className="mt-8 flex flex-col md:flex-row justify-center gap-4">
+                     <button
+                       onClick={() => setStep(AppStep.INTRO)}
+                       className="flex items-center justify-center px-6 py-3 text-rose-600 hover:bg-rose-50 rounded-full transition-colors border border-rose-200 w-full md:w-auto"
+                     >
+                       <Rewind className="w-4 h-4 mr-2" /> Replay
+                     </button>
+                     <div className="px-6 py-3 bg-green-100 text-green-800 rounded-full font-medium flex items-center justify-center w-full md:w-auto text-center">
+                       Forgiven? 🥺
+                     </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+
+        return (
+          <div className="min-h-screen bg-gradient-to-b from-rose-50 to-white relative">
+            <FloatingHearts />
+            {step === AppStep.INTRO && renderIntro()}
+            {step === AppStep.APOLOGY_VIDEO && renderVideoStep(
+              AppStep.APOLOGY_VIDEO,
+              APOLOGY_VIDEO_URL,
+              "My Apology",
+              "I have a surprise for you...",
+              () => setStep(AppStep.CUTE_VIDEO),
+              false
+            )}
+            {step === AppStep.CUTE_VIDEO && renderVideoStep(
+              AppStep.CUTE_VIDEO,
+              CUTE_VIDEO_URL,
+              "Us Being Cute",
+              "Open Love Letter",
+              () => setStep(AppStep.LOVE_LETTER),
+              false
+            )}
+            {step === AppStep.LOVE_LETTER && renderLetter()}
+          </div>
+        );
+      };
+
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(
+        <React.StrictMode>
+          <App />
+        </React.StrictMode>
+      );
+    </script>
+  </body>
+</html>
